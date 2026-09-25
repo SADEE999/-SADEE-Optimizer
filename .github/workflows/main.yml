@@ -1,4 +1,4 @@
-name: SADEE X DIMA - Build App & Deploy Admin
+name: SADEE X DIMA - Build APK & Deploy Admin
 
 on:
   push:
@@ -13,9 +13,10 @@ permissions:
 
 jobs:
 
-  # ==================================================
+  # =====================================================
   # ANDROID APK
-  # ==================================================
+  # =====================================================
+
   build-android:
 
     name: Build Android APK
@@ -31,102 +32,125 @@ jobs:
         id: zip
         shell: bash
         run: |
+
           ZIP_FILE=$(find . -maxdepth 1 -type f -iname "*.zip" | head -n 1)
 
           if [ -z "$ZIP_FILE" ]; then
-            echo "ERROR: ZIP file not found."
+            echo "ERROR: ZIP file not found"
             exit 1
           fi
 
-          echo "ZIP: $ZIP_FILE"
+          echo "ZIP FOUND:"
+          echo "$ZIP_FILE"
+
           echo "zip_file=$ZIP_FILE" >> "$GITHUB_OUTPUT"
+
 
       - name: Extract ZIP
         shell: bash
         run: |
+
           rm -rf extracted
           mkdir -p extracted
 
           unzip -o "${{ steps.zip.outputs.zip_file }}" -d extracted
 
-          echo "========== EXTRACTED =========="
-          find extracted -maxdepth 4 -type f | sort
+          echo "===== EXTRACTED PROJECT ====="
+
+          find extracted -maxdepth 5 -type f | sort
+
 
       - name: Find Android Project
         id: android
         shell: bash
         run: |
-          PROJECT=$(find extracted -type f -name "settings.gradle" -printf '%h\n' | head -n 1)
+
+          PROJECT=$(find extracted \
+            -type f \
+            -name "settings.gradle" \
+            -printf '%h\n' \
+            | head -n 1)
 
           if [ -z "$PROJECT" ]; then
-            echo "ERROR: Android project not found."
+            echo "ERROR: Android project not found"
             exit 1
           fi
 
-          echo "Android project:"
+          echo "ANDROID PROJECT:"
           echo "$PROJECT"
 
           echo "project=$PROJECT" >> "$GITHUB_OUTPUT"
 
-      # ------------------------------------------------
-      # FIX GRADLE REPOSITORY CONFLICT
-      # ------------------------------------------------
-      - name: Fix Gradle Repository Configuration
-        shell: bash
-        run: |
-          SETTINGS="${{ steps.android.outputs.project }}/settings.gradle"
 
-          echo "Checking:"
-          echo "$SETTINGS"
+      # =================================================
+      # FORCE GRADLE 8.0
+      # =================================================
 
-          if [ -f "$SETTINGS" ]; then
-
-            sed -i \
-              's/RepositoriesMode\.FAIL_ON_PROJECT_REPOS/RepositoriesMode.PREFER_PROJECT/g' \
-              "$SETTINGS"
-
-            sed -i \
-              's/RepositoriesMode\.PREFER_SETTINGS/RepositoriesMode.PREFER_PROJECT/g' \
-              "$SETTINGS"
-
-            echo "========== SETTINGS.GRADLE =========="
-            cat "$SETTINGS"
-          fi
-
-      # ------------------------------------------------
-      # JAVA
-      # ------------------------------------------------
       - name: Setup Java 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "17"
 
-      # ------------------------------------------------
-      # GRADLE
-      # ------------------------------------------------
-      - name: Setup Gradle
+
+      - name: Setup Gradle 8.0
         uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.0"
 
-      # ------------------------------------------------
-      # Make gradlew executable
-      # ------------------------------------------------
-      - name: Make Gradle Wrapper Executable
-        working-directory: ${{ steps.android.outputs.project }}
+
+      - name: Check Gradle
         run: |
-          chmod +x gradlew
 
-      # ------------------------------------------------
-      # Build APK
-      # ------------------------------------------------
-      - name: Build Debug APK
+          echo "===== GRADLE VERSION ====="
+
+          gradle --version
+
+
+      # =================================================
+      # FIX REPOSITORY SETTINGS
+      # =================================================
+
+      - name: Fix Gradle Repository Configuration
         working-directory: ${{ steps.android.outputs.project }}
+        shell: bash
         run: |
-          ./gradlew assembleDebug --stacktrace --no-daemon
 
-      # ------------------------------------------------
-      # Upload APK
-      # ------------------------------------------------
+          if [ -f settings.gradle ]; then
+
+            sed -i \
+              's/RepositoriesMode\.FAIL_ON_PROJECT_REPOS/RepositoriesMode.PREFER_PROJECT/g' \
+              settings.gradle || true
+
+            sed -i \
+              's/RepositoriesMode\.PREFER_SETTINGS/RepositoriesMode.PREFER_PROJECT/g' \
+              settings.gradle || true
+
+          fi
+
+          echo "===== SETTINGS.GRADLE ====="
+
+          cat settings.gradle
+
+
+      # =================================================
+      # BUILD APK
+      # =================================================
+
+      - name: Build APK
+        working-directory: ${{ steps.android.outputs.project }}
+        shell: bash
+        run: |
+
+          gradle clean assembleDebug \
+            --no-daemon \
+            --stacktrace
+
+
+      # =================================================
+      # UPLOAD APK
+      # =================================================
+
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
@@ -136,9 +160,10 @@ jobs:
           if-no-files-found: error
 
 
-  # ==================================================
+  # =====================================================
   # ADMIN DASHBOARD
-  # ==================================================
+  # =====================================================
+
   deploy-admin:
 
     name: Deploy Admin Dashboard
@@ -146,6 +171,7 @@ jobs:
     runs-on: ubuntu-latest
 
     environment:
+
       name: github-pages
 
     steps:
@@ -153,83 +179,101 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+
       - name: Find ZIP
         id: zip
         shell: bash
         run: |
+
           ZIP_FILE=$(find . -maxdepth 1 -type f -iname "*.zip" | head -n 1)
 
           if [ -z "$ZIP_FILE" ]; then
-            echo "ERROR: ZIP file not found."
+            echo "ERROR: ZIP file not found"
             exit 1
           fi
 
-          echo "ZIP: $ZIP_FILE"
+          echo "ZIP FOUND:"
+          echo "$ZIP_FILE"
+
           echo "zip_file=$ZIP_FILE" >> "$GITHUB_OUTPUT"
+
 
       - name: Extract ZIP
         shell: bash
         run: |
+
           rm -rf extracted
           mkdir -p extracted
 
           unzip -o "${{ steps.zip.outputs.zip_file }}" -d extracted
 
-      # ------------------------------------------------
-      # Find admin dashboard
-      # ------------------------------------------------
+
       - name: Find Admin Dashboard
         id: admin
         shell: bash
         run: |
 
-          ADMIN=$(find extracted -type d -name "admin-dashboard" | head -n 1)
+          ADMIN=$(find extracted \
+            -type d \
+            -name "admin-dashboard" \
+            | head -n 1)
 
           if [ -z "$ADMIN" ]; then
-            echo "ERROR: admin-dashboard folder not found."
 
-            echo "Searching for index.html..."
+            echo "admin-dashboard folder not found."
 
-            INDEX=$(find extracted -type f -name "index.html" | head -n 1)
+            INDEX=$(find extracted \
+              -type f \
+              -name "index.html" \
+              | head -n 1)
 
             if [ -z "$INDEX" ]; then
-              echo "ERROR: No admin dashboard found."
+              echo "ERROR: index.html not found"
               exit 1
             fi
 
             ADMIN=$(dirname "$INDEX")
+
           fi
 
-          echo "Admin dashboard:"
+          echo "ADMIN DASHBOARD:"
           echo "$ADMIN"
 
           echo "admin=$ADMIN" >> "$GITHUB_OUTPUT"
 
-      # ------------------------------------------------
-      # Prepare GitHub Pages
-      # ------------------------------------------------
+
       - name: Prepare Pages
         shell: bash
         run: |
 
           rm -rf public
+
           mkdir -p public
 
-          cp -R "${{ steps.admin.outputs.admin }}/." public/
+          cp -R \
+            "${{ steps.admin.outputs.admin }}/." \
+            public/
 
-          echo "========== PAGE FILES =========="
-          find public -maxdepth 3 -type f | sort
 
-      # ------------------------------------------------
-      # GitHub Pages
-      # ------------------------------------------------
+          echo "===== PAGE FILES ====="
+
+          find public -maxdepth 4 -type f | sort
+
+
+      # =================================================
+      # GITHUB PAGES
+      # =================================================
+
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
 
+
       - name: Upload Pages Artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v4
         with:
           path: ./public
 
+
       - name: Deploy GitHub Pages
+        id: deployment
         uses: actions/deploy-pages@v4
